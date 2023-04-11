@@ -64,12 +64,21 @@ var cherryConfig1 = {
       'header',
       '|',
       'list',
-      { insert: ['image', 'audio', 'video', 'link', 'hr', 'br', 'code', 'formula', 'toc', 'table', 'pdf', 'word'] },
+      'image', 
+      'audio', 
+      'video', 
+      'link', 
+      'hr', 
+      'br', 
+      'code', 
+      'formula', 
+      'toc', 
+      'table', 
+      'pdf', 
+      'word',
       'graph',
-      'fullScreen',
-      'settings',
-      'export'
     ],
+    sidebar: ['mobilePreview', 'copy', 'theme'],
   },
   editor: {
     height: '600px',
@@ -127,6 +136,7 @@ var cherryConfig2 = {
       'bold',
       'italic',
       'strikethrough',
+      'color',
       '|',
       'list',
       { insert: ['image', 'audio', 'video', 'link', 'hr', 'br', 'code', 'formula', 'toc', 'table', 'pdf', 'word'] },
@@ -135,7 +145,7 @@ var cherryConfig2 = {
       'settings',
       'export'
     ],
-    sidebar: ['mobilePreview'],
+    sidebar: ['copy', 'mobilePreview', 'theme'],
   },
   editor: {
     height: '600px',
@@ -152,6 +162,7 @@ fetch('./markdown/basic.md').then((response) => response.text()).then((value) =>
   var config1 = Object.assign({}, cherryConfig1, { value: value });
   window.cherry1 = new Cherry(config1);
 
-  var config2 = Object.assign({}, cherryConfig2, { value: value });
+  // init with empty string for height test
+  var config2 = Object.assign({}, cherryConfig2, { value: '' });
   window.cherry2 = new Cherry(config2);
 });

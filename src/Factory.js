@@ -46,11 +46,17 @@ export function createSyntaxHook(name, type, options) {
   const BaseClass = type === HOOKS_TYPE_LIST.PAR ? ParagraphBase : SyntaxBase;
   const optionsWhiteList = ['beforeMakeHtml', 'makeHtml', 'afterMakeHtml', 'rule', 'test'];
   const filteredOptions = filterOptions(options, optionsWhiteList, 'function');
+  const paragraphConfig = { needCache: options.needCache, defaultCache: options.defaultCache };
   return class CustomSyntax extends BaseClass {
     static HOOK_NAME = name;
 
     constructor(editorConfig = {}) {
-      super();
+      if (type === HOOKS_TYPE_LIST.PAR) {
+        super({ needCache: !!paragraphConfig.needCache, defaultCache: paragraphConfig.defaultCache });
+      } else {
+        super();
+      }
+
       this.config = editorConfig.config;
     }
 
@@ -103,6 +109,9 @@ export function createMenuHook(name, options) {
   return class CustomMenu extends MenuBase {
     constructor(editorInstance) {
       super(editorInstance);
+      if (!filteredOptions.iconName) {
+        this.noIcon = true;
+      }
       this.setName(name, filteredOptions.iconName);
       this.subMenuConfig = filteredOptions.subMenuConfig || [];
     }

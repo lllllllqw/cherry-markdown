@@ -32,39 +32,7 @@ export default class Paragraph extends ParagraphBase {
 
   constructor(options) {
     super();
-    // 是否启用经典换行逻辑
-    // true：一个换行会被忽略，两个以上连续换行会分割成段落，
-    // false： 一个换行会转成<br>，两个连续换行会分割成段落，三个以上连续换行会转成<br>并分割段落
-    this.classicBr = options.globalConfig.classicBr;
-    this.removeBrAfterBlock = null;
-    this.removeBrBeforeBlock = null;
-  }
-
-  /**
-   * 处理经典换行问题
-   * @param {string} str markdown源码
-   * @returns markdown源码
-   */
-  $cleanParagraph(str) {
-    const { classicBr } = this.$engine.$cherry.options.engine.global;
-    if (classicBr) {
-      return str.replace(/^\n+/, '').replace(/\n+$/, '');
-    }
-
-    if (!this.removeBrAfterBlock) {
-      const allBlockNames = this.$engine.htmlWhiteListAppend
-        ? `${this.$engine.htmlWhiteListAppend}|${blockNames}`.replace(/\|\|+/g, '|')
-        : blockNames;
-      // 段落标签自然换行，所以去掉段落标签两边的换行符
-      this.removeBrAfterBlock = new RegExp(`<(${allBlockNames})(>| [^>]*>)\\s*\\n\\s*`, 'ig');
-      this.removeBrBeforeBlock = new RegExp(`\\n\\s*<\\/(${allBlockNames})>\\s*\\n`, 'ig');
-    }
-    return str
-      .replace(/^\n+/, '')
-      .replace(/\n+$/, '')
-      .replace(this.removeBrAfterBlock, '<$1$2')
-      .replace(this.removeBrBeforeBlock, '</$1>')
-      .replace(/\n/g, '<br>');
+    this.initBrReg(options.globalConfig.classicBr);
   }
 
   /**

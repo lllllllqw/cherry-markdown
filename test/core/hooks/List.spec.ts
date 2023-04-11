@@ -1,17 +1,79 @@
-import { makeChecklist } from '../../../src/core/hooks/List';
-import { expect } from 'chai';
+import List from '../../../src/core/hooks/List';
+import md5 from 'md5';
 
-const list1 = '- [x] test';
+const cases = []
+cases[0] = `
+- 1
+- 2
+  - 2.1
+  - 2.2
+- 3
+  + 3.1
+- 4
+  * 4.2
+`;
+
+cases[1] = `
+- 1
+  - 2
+       - 2.1
+    - 2.2
+ - 3
+          + 3.1
+ - 4
+* 4.2
+`;
+
+cases[2] = `
+- 1
+1. test
+
+- 1.1
+   - 1.1.2
+       - blank
+  - 1.2
+ - 2
+          + blank
+      - 2.1
+	* 2.2
+ 1. test
+   2. 2
+`;
+
+cases[3] = `
+1. test
+	2. test
+1. test
+   一. test
+   1. test
+   
+   
+   a. test
+- test
+`;
+
+cases[4] = `
+- [ ] checklist 1
+- test
+  - [x] checklist 2
+ - [ ] checklist 3
+ - test
+      - [ ] checklist 4
+`;
+
+const listHook = new List({ config: {
+  indentSpace: 2,
+}});
+
+Object.defineProperty(listHook, '$engine', {
+  value: { md5 },
+});
 
 describe('core/hooks/list', () => {
-  it('checklist replace', () => {
-    const cases = [
-      {
-        str: list1,
-      },
-    ];
+  it('list hook', () => {
     cases.forEach((item) => {
-      expect(makeChecklist(item.str)).to.be.equal('- <span class="ch-icon ch-icon-check"></span> test');
+      listHook.makeHtml(item, (text) => ({ html: text }));
+      expect(listHook.cache[listHook.sign].content).toMatchSnapshot();
     });
   });
 });

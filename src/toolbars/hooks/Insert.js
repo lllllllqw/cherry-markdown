@@ -15,64 +15,19 @@
  */
 import MenuBase from '@/toolbars/MenuBase';
 import BubbleTableMenu from '@/toolbars/BubbleTable';
+import { getSelection } from '@/utils/selection';
 /**
  * "插入"按钮
  */
 export default class Insert extends MenuBase {
   // TODO: 需要优化参数传入方式
-  constructor(editor, options, engine) {
-    super(editor);
+  constructor($cherry) {
+    super($cherry);
     this.setName('insert', 'insert');
+    this.noIcon = true;
 
     this.subBubbleTableMenu = new BubbleTableMenu({ row: 9, col: 9 });
-    editor.options.wrapperDom.appendChild(this.subBubbleTableMenu.dom);
-
-    // 定义子菜单
-    this.subMenuConfig = [
-      { iconName: 'image', name: 'image', onclick: this.bindSubClick.bind(this, 'image') },
-      { iconName: 'video', name: 'audio', onclick: this.bindSubClick.bind(this, 'audio') },
-      { iconName: 'video', name: 'video', onclick: this.bindSubClick.bind(this, 'video') },
-      { iconName: 'link', name: 'link', onclick: this.bindSubClick.bind(this, 'link') },
-      { iconName: 'line', name: 'hr', onclick: this.bindSubClick.bind(this, 'hr') },
-      { iconName: 'br', name: 'br', onclick: this.bindSubClick.bind(this, 'br') },
-      { iconName: 'code', name: 'code', onclick: this.bindSubClick.bind(this, 'code') },
-      { iconName: 'insertFormula', name: 'formula', onclick: this.bindSubClick.bind(this, 'formula') },
-      { iconName: 'toc', name: 'toc', onclick: this.bindSubClick.bind(this, 'toc') },
-      { iconName: 'table', name: 'table', onclick: this.bindSubClick.bind(this, 'table'), async: true },
-      // { iconName: 'table', name: 'line-table', onclick: this.bindSubClick.bind(this, 'line-table') },
-      // { iconName: 'table', name: 'bar-table', onclick: this.bindSubClick.bind(this, 'bar-table') },
-      // {iconName:'headlessTable', onclick: this.bindSubClick.bind(this, 'headlessTable'), async: true},
-      { iconName: 'pdf', name: 'pdf', onclick: this.bindSubClick.bind(this, 'pdf') },
-      { iconName: 'word', name: 'word', onclick: this.bindSubClick.bind(this, 'word') },
-    ];
-    // 用户可配置
-    if (options instanceof Array) {
-      const menuMap = this.subMenuConfig.map((menu) => menu.name);
-      this.subMenuConfig = options.reduce((config, name) => {
-        const index = menuMap.indexOf(name);
-        if (index === -1) {
-          return config;
-        }
-        if (name === 'line-table' || name === 'bar-table') {
-          if (engine.markdownParams.engine.syntax.table.enableChart === false) {
-            return config;
-          }
-        }
-        config.push(this.subMenuConfig[index]);
-        return config;
-      }, []);
-    }
-  }
-
-  getSubMenuConfig() {
-    return this.subMenuConfig;
-  }
-
-  bindSubClick(shortCut, selection, async, callback) {
-    if (async) {
-      return this.onClick(selection, shortCut, callback);
-    }
-    return this.onClick(selection, shortCut);
+    $cherry.editor.options.wrapperDom.appendChild(this.subBubbleTableMenu.dom);
   }
 
   /**
@@ -82,7 +37,7 @@ export default class Insert extends MenuBase {
   handleUpload(type = 'image') {
     // type为上传文件类型 image|video|audio|pdf|word
     const input = document.createElement('input');
-    input.type = type || 'file';
+    input.type = 'file';
     input.id = 'fileUpload';
     input.value = '';
     input.style.display = 'none';
@@ -91,7 +46,7 @@ export default class Insert extends MenuBase {
       // @ts-ignore
       const [file] = event.target.files;
       // 文件上传后的回调函数可以由调用方自己实现
-      this.editor.options.fileUpload(file, (url) => {
+      this.$cherry.options.fileUpload(file, (url) => {
         // 文件上传的默认回调行数，调用方可以完全不使用该函数
         if (typeof url !== 'string' || !url) {
           return;
@@ -112,7 +67,7 @@ export default class Insert extends MenuBase {
         }
         // 替换选中区域
         // @ts-ignore
-        this.editor.editor.doc.replaceSelection(code);
+        this.$cherry.$cherry.doc.replaceSelection(code);
       });
     });
     input.click();
@@ -125,8 +80,6 @@ export default class Insert extends MenuBase {
    * @returns {string} 回填到编辑器光标位置/选中文本区域的内容
    */
   onClick(selection, shortKey = '', callback) {
-    // eslint-disable-next-line no-param-reassign
-    shortKey = this.matchShortcutKey(shortKey);
     if (/normal-table/.test(shortKey)) {
       // 如果是插入markdown标准表格
       // 根据shortKey获取想插入表格的行号和列号
@@ -140,6 +93,7 @@ export default class Insert extends MenuBase {
       const text = `${selection}\n\n|${headerText}\n|${controlText}${rowText.repeat(row)}\n\n`;
       return text;
     }
+    const $selection = getSelection(this.editor.editor, selection);
     switch (shortKey) {
       case 'hr':
         // 插入分割线
@@ -228,51 +182,12 @@ export default class Insert extends MenuBase {
         // 可以在文件上传逻辑里做处理，word上传后通过后台服务转成html再返回，前端接受后进行处理并回填
         this.handleUpload('word');
         return selection;
+      case 'ruby':
+        // 如果选中的文本中已经有ruby语法了，则去掉该语法
+        if (/^\s*\{[\s\S]+\|[\s\S]+\}/.test($selection)) {
+          return $selection.replace(/^\s*\{\s*([\s\S]+?)\s*\|[\s\S]+\}\s*/gm, '$1');
+        }
+        return ` { ${$selection} | ${this.editor.$cherry.options.callback.changeString2Pinyin($selection).trim()} } `;
     }
-  }
-
-  /**
-   * 解析快捷键
-   * @param {string} shortcutKey 快捷键
-   * @returns
-   */
-  matchShortcutKey(shortcutKey) {
-    const shortcutKeyMaps = this.shortcutKeyMaps();
-    const shortcutKeyMap = shortcutKeyMaps.find((item) => {
-      return item.shortcutKey === shortcutKey;
-    });
-    return shortcutKeyMap !== undefined ? shortcutKeyMap.shortKey : shortcutKey;
-  }
-
-  /**
-   * 获得监听的快捷键
-   * 根据系统字段监听Ctrl+*和 cmd+*
-   */
-  shortcutKeyMaps() {
-    return [
-      {
-        shortKey: 'code',
-        shortcutKey: 'Mod-k',
-      },
-      {
-        shortKey: 'link',
-        shortcutKey: 'Mod-l',
-      },
-      {
-        shortKey: 'image',
-        shortcutKey: 'Mod-g',
-      },
-      {
-        shortKey: 'formula',
-        shortcutKey: 'Mod-m',
-      },
-    ];
-  }
-
-  get shortcutKeys() {
-    const shortcutKeyMap = this.shortcutKeyMaps();
-    return shortcutKeyMap.map((item) => {
-      return item.shortcutKey;
-    });
   }
 }

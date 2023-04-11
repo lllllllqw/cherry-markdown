@@ -23,9 +23,28 @@ import eslint from '@rollup/plugin-eslint';
 import alias from '@rollup/plugin-alias';
 import json from '@rollup/plugin-json';
 import envReplacePlugin from './env';
+import dartSass from 'sass';
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PROJECT_ROOT_PATH = path.resolve(__dirname, '..');
+/** 构建目标是否 node */
+const IS_COMMONJS_BUILD = process.env.BUILD_TARGET === 'commonjs';
+
+const aliasPluginOptions = {
+  entries: [
+    {
+      find: '@',
+      replacement: path.resolve(PROJECT_ROOT_PATH, 'src'),
+    },
+  ],
+};
+
+if (IS_COMMONJS_BUILD) {
+  aliasPluginOptions.entries.unshift({
+    find: '@/Sanitizer',
+    replacement: path.resolve(PROJECT_ROOT_PATH, 'src', 'Sanitizer.node.js'),
+  });
+}
 
 export default {
   input: 'src/index.js',
@@ -40,14 +59,7 @@ export default {
     }),
     json(),
     envReplacePlugin(),
-    alias({
-      entries: [
-        {
-          find: '@',
-          replacement: path.resolve(PROJECT_ROOT_PATH, 'src'),
-        },
-      ],
-    }),
+    alias(aliasPluginOptions),
     resolve({
       ignoreGlobal: false,
       browser: true,
@@ -90,6 +102,7 @@ export default {
       ...(IS_PRODUCTION && {
         outputStyle: 'compressed',
       }),
+      sass: dartSass,
     }),
     babel({
       babelHelpers: 'runtime',
@@ -127,6 +140,10 @@ export default {
   onwarn(warning, warn) {
     // 忽略 mermaid 的 eval
     if (warning.code === 'EVAL' && warning.id.indexOf('mermaid') !== -1) {
+      return;
+    }
+    // 忽略 juice 的 circular dependency
+    if (warning.code === 'CIRCULAR_DEPENDENCY' && warning.importer.includes('node_modules/juice')) {
       return;
     }
     warn(warning);

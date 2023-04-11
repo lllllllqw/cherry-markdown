@@ -14,25 +14,32 @@
  * limitations under the License.
  */
 import MenuBase from '@/toolbars/MenuBase';
+import { getSelection } from '@/utils/selection';
 /**
  * 插入“引用”的按钮
  */
 export default class Quote extends MenuBase {
-  constructor(editor) {
-    super(editor);
+  constructor($cherry) {
+    super($cherry);
     this.setName('quote', 'blockquote');
   }
 
   /**
-   * 响应点击事件
-   * @param {string} selection 编辑器里选中的内容
-   * @param {string} shortKey 本函数不处理快捷键
+   * click handler
+   * @param {string} selection selection in editor
    * @returns
    */
-  onClick(selection, shortKey = '') {
-    let $selection = selection ? selection : '引用';
-    // TODO：如果选中的内容里已经有“引用”的语法了，需要实现自动清除引用语法的功能，从而达到功能自洽
-    $selection = $selection.replace(/(^)([^\n]+)($)/gm, '$1> $2$3').replace(/\n+$/, '\n\n');
-    return $selection;
+  onClick(selection) {
+    const $selection = getSelection(this.editor.editor, selection, 'line', true) || '引用';
+    const isWrapped = $selection.split('\n').every((text) => /^\s*>[^\n]+$/.exec(text));
+    if (isWrapped) {
+      // 去掉>号
+      return $selection.replace(/(^\s*)>\s*([^\n]+)($)/gm, '$1$2$3').replace(/\n+$/, '\n\n');
+    }
+    this.registerAfterClickCb(() => {
+      this.setLessSelection('> ', '');
+    });
+    // 给每一行增加>号
+    return $selection.replace(/(^)([^\n]+)($)/gm, '$1> $2$3').replace(/\n+$/, '\n\n');
   }
 }

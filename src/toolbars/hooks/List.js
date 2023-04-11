@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 import MenuBase from '@/toolbars/MenuBase';
+import { getSelection } from '@/utils/selection';
+import { getListFromStr } from '@/utils/regexp';
 /**
  * 插入有序/无序/checklist列表的按钮
  */
 export default class List extends MenuBase {
-  constructor(editor) {
-    super(editor);
+  constructor($cherry) {
+    super($cherry);
     this.setName('list', 'list');
     this.subMenuConfig = [
       { iconName: 'ol', name: 'ol', onclick: this.bindSubClick.bind(this, '1') },
@@ -33,31 +35,6 @@ export default class List extends MenuBase {
   }
 
   /**
-   * 处理编辑区域有选中文字时的操作
-   * @param {string} selection 编辑区选中的文本内容
-   * @param {string} type 操作类型：ol 有序列表，ul 无序列表，checklist 检查项
-   * @returns {string} 对应的markdown源码
-   */
-  $dealSelection(selection, type) {
-    let $selection = selection ? selection : 'No.1\n    No.1.1\nNo.2';
-    $selection = $selection.replace(/^\n+/, '').replace(/\n+$/, '');
-    let pre = '1.';
-    switch (type) {
-      case 'ol':
-        pre = '1.';
-        break;
-      case 'ul':
-        pre = '-';
-        break;
-      case 'checklist':
-        pre = '- [x]';
-        break;
-    }
-    $selection = $selection.replace(/^(\s*)(\S[\s\S]*?)$/gm, `$1${pre} $2`);
-    return $selection;
-  }
-
-  /**
    * 响应点击事件
    * @param {string} selection 编辑区选中的文本内容
    * @param {string} shortKey 快捷键：ol 有序列表，ul 无序列表，checklist 检查项
@@ -65,11 +42,11 @@ export default class List extends MenuBase {
    */
   onClick(selection, shortKey = '') {
     const listType = [null, 'ol', 'ul', 'checklist']; // 下标1, 2, 3生效
-    let $selection = selection;
+    const $selection = getSelection(this.editor.editor, selection, 'line', true);
     const [before] = $selection.match(/^\n*/);
     const [after] = $selection.match(/\n*$/);
     if (listType[shortKey] !== null) {
-      $selection = `${before}${this.$dealSelection($selection, listType[shortKey])}${after}`;
+      return `${before}${getListFromStr($selection, listType[shortKey])}${after}`;
     }
     return $selection;
   }

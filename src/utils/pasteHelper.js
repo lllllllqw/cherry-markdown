@@ -13,6 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+import { createElement } from '@/utils/dom';
+
+const SAFE_AREA_MARGIN = 15;
+
 /**
  * Cherry实现了将粘贴的html内容转成对应的markdown源码的功能
  * 本工具主要实现将粘贴html转成的markdown源码在编辑器中选中，并给出切换按钮
@@ -28,22 +33,48 @@ const pasteHelper = {
    * @param {string} md html对应的markdown源码
    * @returns
    */
-  showSwitchBtnAfterPasteHtml(currentCursor, editor, html, md) {
+  showSwitchBtnAfterPasteHtml($cherry, currentCursor, editor, html, md) {
     if (html.trim() === md.trim()) {
       return;
     }
-    this.init(currentCursor, editor, html, md);
+    this.init($cherry, currentCursor, editor, html, md);
     this.setSelection();
     this.bindListener();
     this.initBubble();
     this.showBubble();
+    // 默认粘贴成markdown格式，如果用户上次选择粘贴为纯文本，则需要切换为text
+    if (this.getTypeFromLocalStorage() === 'text') {
+      this.switchTextClick();
+    }
   },
 
-  init(currentCursor, editor, html, md) {
+  init($cherry, currentCursor, editor, html, md) {
+    this.$cherry = $cherry;
     this.html = html;
     this.md = md;
     this.codemirror = editor;
     this.currentCursor = currentCursor;
+    this.locale = $cherry.locale;
+  },
+
+  /**
+   * 获取缓存中的复制粘贴类型
+   */
+  getTypeFromLocalStorage() {
+    if (typeof localStorage === 'undefined') {
+      return 'md';
+    }
+    return localStorage.getItem('cherry-paste-type') || 'md';
+  },
+
+  /**
+   * 记忆最近一次用户选择的粘贴类型
+   */
+  setTypeToLocalStorage(type) {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+    localStorage.setItem('cherry-paste-type', type);
   },
 
   /**
@@ -77,19 +108,37 @@ const pasteHelper = {
     });
   },
 
+  isHidden() {
+    return this.bubbleDom.style.display === 'none';
+  },
+
+  toggleBubbleDisplay() {
+    if (this.isHidden()) {
+      this.bubbleDom.style.display = '';
+      return;
+    }
+    this.bubbleDom.style.display = 'none';
+    return;
+  },
+
   hideBubble() {
     if (this.noHide) {
       return true;
     }
-    if (this.bubbleDom.style.display !== 'none') {
-      this.bubbleDom.style.display = 'none';
+    if (this.isHidden()) {
+      return;
     }
+    this.toggleBubbleDisplay();
   },
 
   updatePositionWhenScroll() {
-    if (this.bubbleDom.style.display === 'block') {
-      this.bubbleDom.style.marginTop = `${this.bubbleDom.dataset.scrollTop - this.getScrollTop()}px`;
+    if (this.isHidden()) {
+      return;
     }
+    // FIXME: update position when stick to the bottom
+    // const isStickToBottom = !this.bubbleDom.style.top;
+    const offset = this.bubbleDom.dataset.scrollTop - this.getScrollTop();
+    this.bubbleDom.style.marginTop = `${offset}px`;
   },
 
   getScrollTop() {
@@ -97,27 +146,24 @@ const pasteHelper = {
   },
 
   showBubble() {
-    const { width, top } = this.getLastSelectedPosition();
-    if (this.bubbleDom.style.display !== 'block') {
-      this.bubbleDom.style.display = 'block';
+    const { top } = this.getLastSelectedPosition();
+    if (this.isHidden()) {
+      this.toggleBubbleDisplay();
       this.bubbleDom.style.marginTop = '0';
       this.bubbleDom.dataset.scrollTop = this.getScrollTop();
     }
-    const positionLimit = this.codemirror
-      .getWrapperElement()
-      .querySelector('.CodeMirror-lines')
-      .firstChild.getBoundingClientRect();
-    const minLeft = positionLimit.left;
-    const maxLeft = positionLimit.width + minLeft;
+    /**
+     * @type {HTMLDivElement}
+     */
+    const codemirrorWrapper = this.codemirror.getWrapperElement();
+    const maxTop = codemirrorWrapper.clientHeight - this.bubbleDom.getBoundingClientRect().height - SAFE_AREA_MARGIN;
 
-    // top += this.bubbleDom.offsetHeight;
-    this.bubbleDom.style.top = `${top}px`;
-
-    let left = width - this.bubbleDom.offsetWidth / 2;
-    if (left < minLeft) {
-      left = minLeft;
-    } else if (left + this.bubbleDom.offsetWidth > maxLeft) {
-      left = maxLeft - this.bubbleDom.offsetWidth;
+    if (top > maxTop) {
+      this.bubbleDom.style.top = '';
+      this.bubbleDom.style.bottom = `${SAFE_AREA_MARGIN}px`;
+    } else {
+      this.bubbleDom.style.top = `${top}px`;
+      this.bubbleDom.style.bottom = '';
     }
   },
 
@@ -126,21 +172,20 @@ const pasteHelper = {
       this.bubbleDom.setAttribute('data-type', 'md');
       return true;
     }
-    const dom = document.createElement('div');
-    dom.className = 'cherry-bubble cherry-switch-paste';
+    const dom = createElement('div', 'cherry-bubble cherry-bubble--centered cherry-switch-paste');
+    dom.style.display = 'none';
 
-    const switchText = document.createElement('span');
+    const switchText = createElement('span', 'cherry-toolbar-button cherry-text-btn', {
+      title: this.locale.pastePlain,
+    });
     switchText.innerText = 'TEXT';
-    switchText.title = '粘贴为纯文本格式';
-    switchText.className = 'cherry-toolbar-button cherry-text-btn';
 
-    const switchMd = document.createElement('span');
+    const switchMd = createElement('span', 'cherry-toolbar-button cherry-md-btn', {
+      title: this.locale.pasteMarkdown,
+    });
     switchMd.innerText = 'Markdown';
-    switchMd.title = '粘贴为markdown格式';
-    switchMd.className = 'cherry-toolbar-button cherry-md-btn';
 
-    const switchBG = document.createElement('span');
-    switchBG.className = 'switch-btn--bg';
+    const switchBG = createElement('span', 'switch-btn--bg');
 
     this.bubbleDom = dom;
     this.switchText = switchText;
@@ -156,6 +201,7 @@ const pasteHelper = {
   },
 
   switchMDClick(event) {
+    this.setTypeToLocalStorage('md');
     if (this.bubbleDom.getAttribute('data-type') === 'md') {
       return;
     }
@@ -167,6 +213,7 @@ const pasteHelper = {
     this.noHide = false;
   },
   switchTextClick(event) {
+    this.setTypeToLocalStorage('text');
     if (this.bubbleDom.getAttribute('data-type') === 'text') {
       return;
     }
@@ -179,16 +226,17 @@ const pasteHelper = {
   },
 
   getLastSelectedPosition() {
-    const selectedObjs = this.codemirror.getWrapperElement().getElementsByClassName('CodeMirror-selected');
+    const selectedObjs = Array.from(this.codemirror.getWrapperElement().getElementsByClassName('CodeMirror-selected'));
     let width = 0;
     let top = 0;
-    if (typeof selectedObjs !== 'object' || selectedObjs.length <= 0) {
+    if (selectedObjs.length <= 0) {
       this.hideBubble();
       return {};
     }
+    // FIXME: remove redundant width calculation
     for (let key = 0; key < selectedObjs.length; key++) {
-      const one = selectedObjs[key];
-      const position = one.getBoundingClientRect();
+      const item = selectedObjs[key];
+      const position = item.getBoundingClientRect();
       const tmpWidth = position.left + position.width / 2;
       const tmpTop = position.top + position.height;
       if (tmpTop > top && tmpWidth >= width) {
@@ -198,7 +246,7 @@ const pasteHelper = {
         width = tmpWidth;
       }
     }
-    return { width, top };
+    return { top };
   },
 };
 

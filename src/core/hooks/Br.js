@@ -16,13 +16,14 @@
 import ParagraphBase from '@/core/ParagraphBase';
 import { isBrowser } from '@/utils/env';
 import { compileRegExp } from '@/utils/regexp';
+import { getIsClassicBrFromLocal, testKeyInLocal } from '@/utils/config';
 
 export default class Br extends ParagraphBase {
   static HOOK_NAME = 'br';
 
   constructor(options) {
     super({ needCache: true });
-    this.classicBr = options.globalConfig.classicBr;
+    this.classicBr = testKeyInLocal('classicBr') ? getIsClassicBrFromLocal() : options.globalConfig.classicBr;
   }
 
   beforeMakeHtml(str) {
@@ -34,22 +35,21 @@ export default class Br extends ParagraphBase {
       if (index === 0) {
         return match;
       }
-      const lineCount = lines.match(/\n/g).length;
+      const lineCount = lines.match(/\n/g)?.length ?? 0;
       const sign = `br${lineCount}`;
       let html = '';
-      const { classicBr } = this.$engine.$cherry.options.engine.global;
       if (isBrowser()) {
         // 为了同步滚动
-        if (classicBr) {
+        if (this.classicBr) {
           html = `<span data-sign="${sign}" data-type="br" data-lines="${lineCount}"></span>`;
         } else {
           html = `<p data-sign="${sign}" data-type="br" data-lines="${lineCount}">&nbsp;</p>`;
         }
       } else {
         // node环境下直接输出br
-        html = classicBr ? '' : '<br/>';
+        html = this.classicBr ? '' : '<br/>';
       }
-      const placeHolder = this.pushCache(html, sign);
+      const placeHolder = this.pushCache(html, sign, lineCount);
       // 结尾只补充一个\n是因为Br将下一个段落中间的所有换行都替换掉了，而两个换行符会导致下一个区块行数计算错误
       return `\n\n${placeHolder}\n`;
     });

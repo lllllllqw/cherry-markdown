@@ -17,9 +17,9 @@
   align-items: stretch;
   align-content: flex-start;
   height: 100%;
-  min-height: 400px;
+  min-height: 100px;
   position: relative;
-  overflow: hidden;
+  // overflow: hidden;
 
   .cherry-editor,
   .cherry-previewer {
@@ -89,7 +89,7 @@
 
   .cherry-insert-table-menu {
     display: block;
-    position: absolute;
+    position: fixed;
     // z-index: 100;
     top: 40px;
     left: 40px;
@@ -127,7 +127,7 @@
   //border: 1px solid $borderColor;
   box-shadow: 0 5px 15px -5px rgba(0, 0, 0, 0.5);
   margin-left: -60px;
-  z-index: 1000;
+  z-index: 8;
 
   &-item {
     width: 100%;
@@ -175,10 +175,11 @@
   line-height: 2.8;
   flex-basis: 100%;
   box-sizing: border-box;
-  z-index: 1;
+  z-index: 2;
   user-select: none;
   box-shadow: $toolbarShadowLight;
   background: $toolbarBgLight;
+  overflow: hidden;
 
   [data-toolbar-theme='dark'] & {
     background: $toolbarBgDark;
@@ -207,7 +208,7 @@
   &-button {
     float: left;
     padding: 0 12px;
-    margin: 4px 0;
+    // margin: 4px 0;
     height: 38px;
     color: $toolbarBtnColorLight;
     background: transparent;
@@ -241,16 +242,24 @@
   }
 }
 
+
+.cherry {
+  .ace_search {
+    background: #FFF;
+  }
+}
+
 .cherry-sidebar {
-  min-height: 200px;
-  width: 40px;
+  width: 30px;
   position: absolute;
   top: 48px;
   right: 7px;
-  z-index: 999;
+  z-index: 0;
+  bottom: 0;
+  overflow: hidden;
   .cherry-toolbar-button {
     height: 30px;
-    padding: 3px 12px 0 12px;
+    padding: 3px 12px 0 6px;
 
     &:hover {
       background: transparent;
@@ -287,98 +296,10 @@
   }
 }
 
-.cherry-bubble {
-  position: absolute;
-  top: 100px;
-  left: 200px;
-  background-color: #fff;
-  box-shadow: 0 2px 15px -5px rgba(0, 0, 0, 0.5);
-  height: 35px;
-  min-width: 50px;
-  border-radius: $borderRadius;
-  border: 1px solid $borderColor;
-  z-index: 999;
-  display: none;
-
-  .cherry-bubble-top,
-  .cherry-bubble-bottom {
-    width: 0;
-    height: 0;
-    border-left: 8px solid rgba(0, 0, 0, 0);
-    border-right: 8px solid rgba(0, 0, 0, 0);
-    position: relative;
-    left: 50%;
-    margin-left: -8px;
-  }
-
-  .cherry-bubble-top {
-    border-bottom: 8px solid #fff;
-    top: -8px;
-  }
-
-  .cherry-bubble-bottom {
-    border-top: 8px solid #fff;
-    bottom: -35px;
-  }
-
-  .cherry-toolbar-button {
-    line-height: 35px;
-    height: 100%;
-    overflow: hidden;
-    vertical-align: middle;
-    display: inline-block;
-    padding: 0 15px;
-    margin-top: -1px;
-    cursor: pointer;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    &:hover {
-      //color: #036;
-      border-color: $borderColor;
-      background-color: rgba(89, 128, 166, 0.05);
-    }
-
-    &.cherry-toolbar-split {
-      border-left: 1px solid #ddd;
-      width: 0;
-      padding: 0;
-      overflow: hidden;
-    }
-  }
-
-  [data-toolbar-theme='dark'] & {
-    border-color: $toolbarBgDark;
-    background: $toolbarBgDark;
-
-    .cherry-toolbar-button {
-      color: $toolbarBtnColorDark;
-      background: $toolbarBtnBgDark;
-
-      &:hover {
-        color: $toolbarBtnHoverColorDark;
-        background: $toolbarBtnBgHoverDark;
-      }
-    }
-
-    .cherry-bubble-top {
-      border-bottom: 8px solid $toolbarBgDark;
-    }
-
-    .cherry-bubble-bottom {
-      border-top: 8px solid $toolbarBgDark;
-    }
-
-    .cherry-toolbar-button:hover {
-      border-color: $toolbarBgDark;
-    }
-  }
-}
+@import './components/bubble';
 
 .cherry-floatmenu {
-  z-index: 100;
+  z-index: 4;
   display: none;
   position: absolute;
   left: 30px;
@@ -449,10 +370,27 @@
     font-family: $fontFamily;
     background: $editorBg;
     color: $fontColor;
+    // codemirror 依赖隐藏的 textarea 计算行高，这里将字体大小设置为行高，避免输入法遮挡内容
+    // Fixed https://github.com/Tencent/cherry-markdown/issues/82
+    textarea {
+      font-size: $lineHeight;
+    }
   }
 
   .CodeMirror-lines {
     padding: 15px 34px;
+
+    // 对draw.io的xml数据，和图片里base64格式的数据限定最大宽度
+    .drawio, .base64 {
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 80px;
+      white-space: nowrap;
+      vertical-align: bottom;
+      color: darkmagenta !important;
+      font-size: 12px !important;
+    }
   }
 
   .cm-s-default .cm-header {
@@ -469,7 +407,7 @@
     font-size: 0.9em;
   }
 
-  .cm-s-default .cm-whitespace {
+  .cm-s-default .cm-whitespace, .cm-tab {
     font-family: $monospaceFont;
     font-size: 0.9em;
   }
@@ -505,7 +443,7 @@
   width: 15px;
   cursor: ew-resize;
   position: absolute;
-  z-index: 1000;
+  z-index: 12;
   background: transparent;
 
   &.cherry-drag--show {
@@ -520,7 +458,7 @@
 }
 
 .cherry-editor-mask {
-  z-index: 999;
+  z-index: 10;
   position: absolute;
   display: none;
   background: rgba(0, 0, 0, 0.2);
@@ -531,7 +469,7 @@
 }
 
 .cherry-previewer-mask {
-  z-index: 999;
+  z-index: 10;
   position: absolute;
   display: none;
   background: rgba(0, 0, 0, 0.4);
@@ -542,7 +480,7 @@
 }
 
 .cherry-previewer {
-  padding: 20px 34px;
+  padding: 20px 45px 20px 20px;
   border-left: 2px solid #ebedee;
   width: 50%;
   box-sizing: border-box;
@@ -588,6 +526,37 @@
   .cherry-list__square {
     list-style: square;
   }
+
+  div[data-type="codeBlock"]:hover {
+    .cherry-copy-code-block {
+      display: block !important;
+      position: relative;
+      width: 25px;
+      text-align: center;
+      height: 25px;
+      border: 1px solid #DDD;
+      cursor: pointer;
+      float: right;
+      right: 10px;
+      top: 15px;
+      color: #FFF;
+      border-radius: 5px;
+      margin-left: -27px;
+      transition: all 0.3s;
+      z-index: 2;
+    }
+    // 浅色系
+    [data-code-block-theme='default'] & ,[data-code-block-theme='funky'] & ,[data-code-block-theme='solarized-light'] & ,[data-code-block-theme='coy'] & {
+      .cherry-copy-code-block {
+        background-color: #3582fb;
+      }
+    }
+    .cherry-copy-code-block:hover {
+      color: #3582fb;
+      background-color: #eee;
+      border-color: #3582fb;
+    }
+  }
 }
 
 .cherry-color-wrap {
@@ -595,13 +564,17 @@
   position: fixed;
   width: auto;
   padding: 5px 10px;
-  z-index: 1000;
+  z-index: 6;
   background: #fff;
   box-shadow: $shadow;
 
   h3 {
     font-size: 12px;
     margin: 0px;
+    font-weight: 400;
+  }
+  [data-toolbar-theme='dark'] & h3{
+    color: $toolbarBtnColorDark;
   }
   .cherry-color-text {
     float: left;
@@ -628,76 +601,50 @@
   }
 }
 
-.cherry-switch-paste {
-  width: 224px;
-  margin-left: -112px;
-  left: 50%;
-  .switch-btn--bg {
-    transition: all 0.3s;
-    position: absolute;
-    width: 50%;
-    height: 100%;
-    box-sizing: border-box;
-    z-index: -1;
-    left: -1px;
-    opacity: 0.3;
-    background-color: $toolbarBtnHoverColorLight;
-  }
-  .cherry-toolbar-button {
-    width: 80px;
-    text-align: center;
-    &:hover {
-      border-color: transparent;
-    }
-  }
-  &[data-type='text'] {
-    .cherry-text-btn {
-      color: $toolbarBtnColorLight;
-    }
-    .cherry-md-btn {
-      color: $toolbarBtnHoverColorLight;
-    }
-  }
-  &[data-type='md'] {
-    .cherry-md-btn {
-      color: $toolbarBtnColorLight;
-    }
-    .cherry-text-btn {
-      color: $toolbarBtnHoverColorLight;
-    }
-    .switch-btn--bg {
-      left: 50%;
-    }
-  }
-  [data-toolbar-theme='dark'] & {
-    .switch-btn--bg {
-      background-color: $toolbarBtnHoverColorDark;
-    }
-    &[data-type='text'] {
-      .cherry-text-btn {
-        color: $toolbarBtnColorDark;
-      }
-      .cherry-md-btn {
-        color: $toolbarBtnHoverColorDark;
-      }
-    }
-    &[data-type='md'] {
-      .cherry-md-btn {
-        color: $toolbarBtnColorDark;
-      }
-      .cherry-text-btn {
-        color: $toolbarBtnHoverColorDark;
-      }
-      .switch-btn--bg {
-        left: 50%;
-      }
-    }
-  }
-}
-
 
 .Cherry-Math {
   svg {
     max-width: 100%;
   }
 }
+
+.cherry-suggester-panel {
+  display: none;
+  position: absolute; left: 0;top: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  max-height: 200px;
+  box-shadow: 0 2px 8px 1px #00000033;
+
+  .cherry-suggester-panel__item {
+    border: none;
+    white-space: nowrap;
+    min-width: 50px;
+    padding: 5px 13px;
+    color: #333;
+    display: block;
+    cursor: pointer;
+    &.cherry-suggester-panel__item--selected {
+      background-color: #f2f2f5;
+      text-decoration: none;
+      color: #eb7350;
+    }
+  }
+
+}
+
+.cherry-suggestion {
+  background-color: #ebf3ff;
+  color: #3582fb;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/** 引入自带的主题 */
+@import './themes/default.scss';
+@import './themes/dark.scss';
+@import './themes/light.scss';
+@import './themes/green.scss';
+@import './themes/red.scss';

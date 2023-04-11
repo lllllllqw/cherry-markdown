@@ -17,6 +17,7 @@ import SyntaxBase from '@/core/SyntaxBase';
 import { escapeHTMLSpecialChar as _e, isValidScheme, encodeURIOnce } from '@/utils/sanitize';
 import { compileRegExp, isLookbehindSupported, NOT_ALL_WHITE_SPACES_INLINE } from '@/utils/regexp';
 import { replaceLookbehind } from '@/utils/lookbehind-replace';
+import UrlCache from '@/UrlCache';
 
 export default class Link extends SyntaxBase {
   static HOOK_NAME = 'link';
@@ -28,13 +29,33 @@ export default class Link extends SyntaxBase {
   }
 
   /**
-   * 提前处理转化link中的$，防止误判为公式语法
-   * @param {string} str
+   * 校验link中text的方括号是否符合规则
+   * @param {string} rawText
    */
-  beforeMakeHtml(str) {
-    return str.replace(this.RULE.reg, (match) => {
-      return match.replace(/~D/g, '~1D');
-    });
+  checkBrackets(rawText) {
+    const stack = [];
+    const text = `[${rawText}]`;
+    // 前方有奇数个\当前字符被转义
+    const checkEscape = (place) => text.slice(0, place).match(/\\*$/)[0].length & 1;
+    for (let i = text.length - 1; text[i]; i--) {
+      if (i === text.length - 1 && checkEscape(i)) break;
+      if (text[i] === ']' && !checkEscape(i)) stack.push(']');
+      if (text[i] === '[' && !checkEscape(i)) {
+        stack.pop();
+        if (!stack.length) {
+          return {
+            isValid: true,
+            coreText: text.slice(i + 1, text.length - 1),
+            extraLeadingChar: text.slice(0, i),
+          };
+        }
+      }
+    }
+    return {
+      isValid: false, // 方括号匹配不上
+      coreText: rawText,
+      extraLeadingChar: '',
+    };
   }
 
   /**
@@ -57,6 +78,8 @@ export default class Link extends SyntaxBase {
     }
 
     if (refType === 'url') {
+      const { isValid, coreText, extraLeadingChar } = this.checkBrackets(text);
+      if (!isValid) return match;
       attrs = title && title.trim() !== '' ? ` title="${_e(title.replace(/["']/g, ''))}"` : '';
       if (target) {
         attrs += ` target="${target.replace(/{target\s*=\s*(.*?)}/, '$1')}"`;
@@ -64,13 +87,16 @@ export default class Link extends SyntaxBase {
         attrs += ` target="_blank"`;
       }
       let processedURL = link.trim().replace(/~1D/g, '~D'); // 还原替换的$符号
-      const processedText = text.replace(/~1D/g, '~D'); // 还原替换的$符号
+      const processedText = coreText.replace(/~1D/g, '~D'); // 还原替换的$符号
       // text可能是html标签，依赖htmlBlock进行处理
       if (isValidScheme(processedURL)) {
         processedURL = this.urlProcessor(processedURL, 'link');
-        return `${leadingChar}<a href="${encodeURIOnce(processedURL)}" rel="nofollow"${attrs}>${processedText}</a>`;
+        processedURL = encodeURIOnce(processedURL);
+        return `${leadingChar + extraLeadingChar}<a href="${UrlCache.set(
+          processedURL,
+        )}" rel="nofollow"${attrs}>${processedText}</a>`;
       }
-      return `${leadingChar}<span>${text}</span>`;
+      return `${leadingChar + extraLeadingChar}<span>${text}</span>`;
     }
     // should never happen
     return match;
@@ -81,13 +107,18 @@ export default class Link extends SyntaxBase {
   }
 
   makeHtml(str) {
-    if (!this.test(str)) {
-      return str;
-    }
+    let $str = str.replace(this.RULE.reg, (match) => {
+      return match.replace(/~D/g, '~1D');
+    });
     if (isLookbehindSupported()) {
-      return str.replace(this.RULE.reg, this.toHtml.bind(this));
+      $str = $str.replace(this.RULE.reg, this.toHtml.bind(this));
+    } else {
+      $str = replaceLookbehind($str, this.RULE.reg, this.toHtml.bind(this), true, 1);
     }
-    return replaceLookbehind(str, this.RULE.reg, this.toHtml.bind(this), true, 1);
+    $str = $str.replace(this.RULE.reg, (match) => {
+      return match.replace(/~1D/g, '~D');
+    });
+    return $str;
   }
 
   rule() {
@@ -101,7 +132,14 @@ export default class Link extends SyntaxBase {
         `${
           '(?:' +
           '\\(' +
-          '([^"][^\\s)]+?[^"])' + // ?<link> url
+          /**
+           * allow double quotes
+           * e.g.
+           * [link](") ⭕️ valid
+           * [link]("") ⭕️ valid
+           * [link](" ") ❌ invalid
+           */
+          '([^\\s)]+)' + // ?<link> url
           '(?:[ \\t]((?:".*?")|(?:\'.*?\')))?' + // ?<title> optional
           '\\)' +
           '|' + // or

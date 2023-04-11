@@ -22,12 +22,14 @@ import FloatMenu from './toolbars/FloatMenu';
 import Toolbar from './toolbars/Toolbar';
 import { createElement } from './utils/dom';
 import Sidebar from './toolbars/Sidebar';
-import { customizer } from './utils/config';
+import { customizer, getThemeFromLocal, changeTheme } from './utils/config';
 import NestedError, { $expectTarget } from './utils/error';
+import getPosBydiffs from './utils/recount-pos';
 import defaultConfig from './Cherry.config';
-
 import './sass/cherry.scss';
 import cloneDeep from 'lodash/cloneDeep';
+import Event from './Event';
+import locales from '@/locales/index';
 
 import { urlProcessorProxy } from './UrlCache';
 import { CherryStatic } from './CherryStatic';
@@ -61,14 +63,32 @@ export default class Cherry extends CherryStatic {
      */
     this.options = mergeWith({}, defaultConfigCopy, options, customizer);
 
+    // loading the locale
+    this.locale = locales[this.options.locale];
+
     if (typeof this.options.engine.global.urlProcessor === 'function') {
       this.options.engine.global.urlProcessor = urlProcessorProxy(this.options.engine.global.urlProcessor);
     }
 
-    if (this.options.isPreviewOnly) {
+    this.status = {
+      toolbar: 'show',
+      previewer: 'show',
+      editor: 'show',
+    };
+
+    if (this.options.isPreviewOnly || this.options.editor.defaultModel === 'previewOnly') {
       this.options.toolbars.showToolbar = false;
       this.options.editor.defaultModel = 'previewOnly';
+      this.status.editor = 'hide';
+      this.status.toolbar = 'hide';
     }
+
+    /**
+     * @property
+     * @type {string} 实例ID
+     */
+    this.instanceId = `cherry-${new Date().getTime()}${Math.random()}`;
+    this.options.instanceId = this.instanceId;
 
     /**
      * @private
@@ -83,9 +103,12 @@ export default class Cherry extends CherryStatic {
    * @private
    */
   init() {
-    let mountEl = document.getElementById(this.options.id);
+    let mountEl = this.options.id ? document.getElementById(this.options.id) : this.options.el;
 
     if (!mountEl) {
+      if (!this.options.forceAppend) {
+        return false;
+      }
       mountEl = document.createElement('div');
       mountEl.id = this.options.id || 'cherry-markdown';
       document.body.appendChild(mountEl);
@@ -94,6 +117,7 @@ export default class Cherry extends CherryStatic {
     if (!mountEl.style.height) {
       mountEl.style.height = this.options.editor.height;
     }
+    this.cherryDom = mountEl;
 
     // 蒙层dom，用来拖拽编辑区&预览区宽度时展示蒙层
     const wrapperDom = this.createWrapper();
@@ -109,9 +133,9 @@ export default class Cherry extends CherryStatic {
     }
     $expectTarget(this.options.toolbars.toolbar, Array);
     // 创建顶部工具栏
-    this.toolbar = this.createToolbar(editor);
+    this.toolbar = this.createToolbar();
     // 创建预览区域的侧边工具栏
-    this.sidebar = this.createSidebar(editor);
+    this.sidebar = this.createSidebar();
 
     const wrapperFragment = document.createDocumentFragment();
     wrapperFragment.appendChild(this.toolbar.options.dom);
@@ -129,9 +153,9 @@ export default class Cherry extends CherryStatic {
 
     editor.init(previewer);
     // 创建bubble工具栏，所谓bubble工具栏，是指在编辑区选中文本时悬浮出现的工具栏
-    this.createBubble(editor);
+    this.createBubble();
     // 创建float工具栏，所谓float工具栏，是指当编辑区光标处于新行时，在行内联想出的工具栏
-    this.createFloatMenu(editor);
+    this.createFloatMenu();
     previewer.init(editor);
 
     previewer.registerAfterUpdate(this.engine.mounted.bind(this.engine));
@@ -141,6 +165,27 @@ export default class Cherry extends CherryStatic {
 
     // 切换模式，有纯预览模式、纯编辑模式、双栏编辑模式
     this.switchModel(this.options.editor.defaultModel);
+
+    Event.on(this.instanceId, Event.Events.toolbarHide, () => {
+      this.status.toolbar = 'hide';
+    });
+    Event.on(this.instanceId, Event.Events.toolbarShow, () => {
+      this.status.toolbar = 'show';
+    });
+    Event.on(this.instanceId, Event.Events.previewerClose, () => {
+      this.status.previewer = 'hide';
+    });
+    Event.on(this.instanceId, Event.Events.previewerOpen, () => {
+      this.status.previewer = 'show';
+    });
+    Event.on(this.instanceId, Event.Events.editorClose, () => {
+      this.status.editor = 'hide';
+      // 关闭编辑区时，需要清除所有高亮
+      this.previewer.highlightLine(0);
+    });
+    Event.on(this.instanceId, Event.Events.editorOpen, () => {
+      this.status.editor = 'show';
+    });
   }
 
   /**
@@ -177,6 +222,23 @@ export default class Cherry extends CherryStatic {
   }
 
   /**
+   * 获取实例id
+   * @returns {string}
+   * @public
+   */
+  getInstanceId() {
+    return this.instanceId;
+  }
+
+  /**
+   * 获取编辑器状态
+   * @returns  {Object}
+   */
+  getStatus() {
+    return this.status;
+  }
+
+  /**
    * 获取编辑区内的markdown源码内容
    * @returns markdown源码内容
    */
@@ -189,7 +251,7 @@ export default class Cherry extends CherryStatic {
    * @returns markdown源码内容
    */
   getMarkdown() {
-    return this.editor.editor.getValue();
+    return this.getValue();
   }
 
   /**
@@ -206,14 +268,7 @@ export default class Cherry extends CherryStatic {
    * @returns html内容
    */
   getHtml(wrapTheme = true) {
-    // 默认包裹theme
-    const html = this.previewer.isPreviewerHidden()
-      ? this.previewer.options.previewerCache.html
-      : this.previewer.getValue();
-    if (!wrapTheme) return html;
-    const inlineCodeTheme = document.querySelector('.cherry').getAttribute('data-inline-code-theme');
-    const codeBlockTheme = document.querySelector('.cherry').getAttribute('data-code-block-theme');
-    return `<div data-inline-code-theme="${inlineCodeTheme}" data-code-block-theme="${codeBlockTheme}">${html}</div>`;
+    return this.previewer.getValue(wrapTheme);
   }
 
   getPreviewer() {
@@ -239,10 +294,21 @@ export default class Cherry extends CherryStatic {
   /**
    * 覆盖编辑区的内容
    * @param {string} content markdown内容
+   * @param {boolean} keepCursor 是否保持光标位置
    * @returns
    */
-  setValue(content) {
-    return this.editor.editor.setValue(content);
+  setValue(content, keepCursor = false) {
+    if (keepCursor === false) {
+      return this.editor.editor.setValue(content);
+    }
+    const codemirror = this.editor.editor;
+    const old = this.getValue();
+    const pos = codemirror.getDoc().indexFromPos(codemirror.getCursor());
+    const newPos = getPosBydiffs(pos, old, content);
+    const ret = codemirror.setValue(content);
+    const cursor = codemirror.getDoc().posFromIndex(newPos);
+    codemirror.setCursor(cursor);
+    return ret;
   }
 
   /**
@@ -275,12 +341,26 @@ export default class Cherry extends CherryStatic {
   }
 
   /**
+   * 强制重新渲染预览区域
+   */
+  refreshPreviewer() {
+    try {
+      const markdownText = this.getValue();
+      const html = this.engine.makeHtml(markdownText);
+      this.previewer.refresh(html);
+    } catch (e) {
+      throw new NestedError(e);
+    }
+  }
+
+  /**
    * 覆盖编辑区的内容
    * @param {string} content markdown内容
+   * @param {boolean} keepCursor 是否保持光标位置
    * @returns
    */
-  setMarkdown(content) {
-    return this.editor.editor.setValue(content);
+  setMarkdown(content, keepCursor = false) {
+    return this.setValue(content, keepCursor);
   }
 
   /**
@@ -294,7 +374,7 @@ export default class Cherry extends CherryStatic {
     let codeBlockTheme = /** @type {{theme?: string;}} */ (this.options.engine.syntax.codeBlock).theme;
     if (codeBlockTheme === 'dark') codeBlockTheme = 'tomorrow-night';
     else if (codeBlockTheme === 'light') codeBlockTheme = 'solarized-light';
-    const wrapperDom = createElement('div', 'cherry clearfix', {
+    const wrapperDom = createElement('div', ['cherry', 'clearfix', getThemeFromLocal(true)].join(' '), {
       'data-toolbarTheme': toolbarTheme,
       'data-inlineCodeTheme': inlineCodeTheme,
       'data-codeBlockTheme': codeBlockTheme,
@@ -305,70 +385,62 @@ export default class Cherry extends CherryStatic {
 
   /**
    * @private
-   * @param {import('@/Editor').default} editor
    * @returns
    */
-  createToolbar(editor) {
+  createToolbar() {
     const dom = createElement('div', 'cherry-toolbar');
     this.toolbar = new Toolbar({
       dom,
-      editor,
+      $cherry: this,
       buttonConfig: this.options.toolbars.toolbar,
       customMenu: this.options.toolbars.customMenu,
-      engine: this.engine,
     });
     return this.toolbar;
   }
 
   /**
    * @private
-   * @param {import('@/Editor').default} editor
    * @returns
    */
-  createSidebar(editor) {
+  createSidebar() {
     const externalClass = this.options.toolbars.theme === 'dark' ? 'dark' : '';
     const dom = createElement('div', `cherry-sidebar ${externalClass}`);
     this.sidebar = new Sidebar({
       dom,
-      editor,
+      $cherry: this,
       buttonConfig: this.options.toolbars.sidebar,
       customMenu: this.options.toolbars.customMenu,
-      engine: this.engine,
-      previewer: this.previewer,
     });
     return this.sidebar;
   }
 
   /**
    * @private
-   * @param {import('@/Editor').default} editor
    * @returns
    */
-  createFloatMenu(editor) {
+  createFloatMenu() {
     const dom = createElement('div', 'cherry-floatmenu');
     if (this.options.toolbars.float) {
       $expectTarget(this.options.toolbars.float, Array);
       this.floatMenu = new FloatMenu({
         dom,
-        editor,
+        $cherry: this,
         buttonConfig: this.options.toolbars.float,
-        engine: this.engine,
       });
     }
   }
 
   /**
    * @private
-   * @param {import('@/Editor').default} editor
    * @returns
    */
-  createBubble(editor) {
+  createBubble() {
     const dom = createElement('div', 'cherry-bubble');
     if (this.options.toolbars.bubble) {
       $expectTarget(this.options.toolbars.bubble, Array);
       this.bubble = new Bubble({
         dom,
-        editor,
+        $cherry: this,
         buttonConfig: this.options.toolbars.bubble,
         engine: this.engine,
       });
@@ -386,6 +458,7 @@ export default class Cherry extends CherryStatic {
     editor.appendChild(textArea);
 
     this.editor = new Editor({
+      $cherry: this,
       editorDom: editor,
       wrapperDom: this.wrapperDom,
       value: this.options.value,
@@ -393,6 +466,7 @@ export default class Cherry extends CherryStatic {
       onChange: this.editText.bind(this),
       toolbars: this.options.toolbars,
       fileUpload: this.options.fileUpload,
+      autoScrollByCursor: this.options.autoScrollByCursor,
       ...this.options.editor,
     });
     return this.editor;
@@ -405,8 +479,16 @@ export default class Cherry extends CherryStatic {
   createPreviewer() {
     /** @type {HTMLDivElement} */
     let previewer;
-    const { className, dom } = this.options.previewer;
-    const previewerClassName = `cherry-previewer ${className}`;
+    const anchorStyle =
+      (this.options.engine.syntax.header && this.options.engine.syntax.header.anchorStyle) || 'default';
+    const autonumberClass = anchorStyle === 'autonumber' ? ' head-num' : '';
+    const { className, dom, enablePreviewerBubble } = this.options.previewer;
+    const previewerClassName = [
+      'cherry-previewer cherry-markdown',
+      className || '',
+      autonumberClass,
+      getThemeFromLocal(true),
+    ].join(' ');
     if (dom) {
       previewer = dom;
       previewer.className += ` ${previewerClassName}`;
@@ -418,12 +500,15 @@ export default class Cherry extends CherryStatic {
     const previewerMask = createElement('div', 'cherry-previewer-mask');
 
     this.previewer = new Previewer({
+      $cherry: this,
       virtualDragLineDom: virtualDragLine,
       editorMaskDom: editorMask,
       previewerMaskDom: previewerMask,
       previewerDom: previewer,
       value: this.options.value,
       isPreviewOnly: this.options.isPreviewOnly,
+      enablePreviewerBubble,
+      lazyLoadImg: this.options.previewer.lazyLoadImg,
     });
 
     return this.previewer;
@@ -448,10 +533,10 @@ export default class Cherry extends CherryStatic {
 
   /**
    * @private
-   * @param {Event} evt
+   * @param {Event} _evt
    * @param {import('codemirror').Editor} codemirror
    */
-  editText(evt, codemirror) {
+  editText(_evt, codemirror) {
     try {
       if (this.timer) {
         clearTimeout(this.timer);
@@ -464,6 +549,8 @@ export default class Cherry extends CherryStatic {
         if (this.options.callback.afterChange) {
           this.options.callback.afterChange(markdownText, html);
         }
+        // 强制每次编辑（包括undo、redo）编辑器都会自动滚动到光标位置
+        codemirror.scrollIntoView(null);
       }, 50);
     } catch (e) {
       throw new NestedError(e);
@@ -485,13 +572,12 @@ export default class Cherry extends CherryStatic {
   /**
    * @private
    * @param {*} evt
-   * @param {*} codemirror
    */
-  fireShortcutKey(evt, codemirror) {
+  fireShortcutKey(evt) {
     if (this.toolbar.matchShortcutKey(evt)) {
       // 快捷键
       evt.preventDefault();
-      this.toolbar.fireShortcutKey(evt, codemirror);
+      this.toolbar.fireShortcutKey(evt);
     }
   }
 
@@ -502,5 +588,13 @@ export default class Cherry extends CherryStatic {
    */
   export(type = 'pdf') {
     this.previewer.export(type);
+  }
+
+  /**
+   * 修改主题
+   * @param {string} theme option.theme里的className
+   */
+  setTheme(theme = 'default') {
+    changeTheme(this, theme);
   }
 }

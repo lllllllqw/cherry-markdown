@@ -8,3 +8,5 @@ src/sass/**
 src/libs/*.js
 example-applications/**
 examples/**
+client
+vscodePlugin

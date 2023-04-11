@@ -16,20 +16,30 @@
 // @ts-check
 import codemirror from 'codemirror';
 import 'codemirror/lib/codemirror.css';
-import 'codemirror/mode/markdown/markdown';
-import 'codemirror/mode/xml/xml';
+// import 'codemirror/mode/markdown/markdown';
+import 'codemirror/mode/gfm/gfm'; // https://codemirror.net/mode/gfm/index.html
+// import 'codemirror/mode/xml/xml';
 import 'codemirror/addon/edit/continuelist';
 import 'codemirror/addon/edit/closetag';
 import 'codemirror/addon/fold/xml-fold';
 import 'codemirror/addon/edit/matchtags';
 import 'codemirror/addon/search/searchcursor';
 import 'codemirror/addon/display/placeholder';
+import 'codemirror/keymap/sublime';
+
+import 'cm-search-replace/src/search';
+import 'codemirror/addon/scroll/annotatescrollbar';
+import 'codemirror/addon/search/matchesonscrollbar';
 // import 'codemirror/addon/selection/active-line';
 // import 'codemirror/addon/edit/matchbrackets';
 import htmlParser from '@/utils/htmlparser';
 import pasteHelper from '@/utils/pasteHelper';
-import lazyLoadImg from '@/utils/lazyLoadImg';
+import { addEvent } from './utils/event';
 import Logger from '@/Logger';
+import Event from '@/Event';
+import { handelParams } from '@/utils/file';
+import { createElement } from './utils/dom';
+import { imgBase64Reg, imgDrawioXmlReg } from './utils/regexp';
 
 /**
  * @typedef {import('~types/editor').EditorConfiguration} EditorConfiguration
@@ -52,13 +62,16 @@ export default class Editor {
       id: 'code',
       editorDom: document.createElement('div'),
       wrapperDom: null,
+      autoScrollByCursor: true,
+      convertWhenPaste: true,
       codemirror: {
         lineNumbers: false, // 显示行数
         cursorHeight: 0.85, // 光标高度，0.85好看一些
         indentUnit: 4, // 缩进单位为4
+        tabSize: 4, // 一个tab转换成的空格数量
         // styleActiveLine: false, // 当前行背景高亮
         // matchBrackets: true, // 括号匹配
-        mode: 'markdown',
+        mode: 'gfm', // 从markdown模式改成gfm模式，以使用默认高亮规则
         lineWrapping: true, // 自动换行
         indentWithTabs: true, // 缩进用tab表示
         autofocus: true,
@@ -67,6 +80,10 @@ export default class Editor {
         extraKeys: { Enter: 'newlineAndIndentContinueMarkdownList' }, // 增加markdown回车自动补全
         matchTags: { bothTags: true }, // 自动高亮选中的闭合html标签
         placeholder: '',
+        // 设置为 contenteditable 对输入法定位更友好
+        // 但已知会影响某些悬浮菜单的定位，如粘贴选择文本或markdown模式的菜单
+        // inputStyle: 'contenteditable',
+        keyMap: 'sublime',
       },
       toolbars: {},
       onKeydown() {},
@@ -87,7 +104,63 @@ export default class Editor {
       Object.assign(this.options.codemirror, codemirror);
     }
     Object.assign(this.options, restOptions);
+    this.$cherry = this.options.$cherry;
+    this.instanceId = this.$cherry.getInstanceId();
   }
+
+  /**
+   * 处理draw.io的xml数据和图片的base64数据，对这种超大的数据增加省略号
+   */
+  dealBigData = () => {
+    if (this.noChange) {
+      this.noChange = false;
+      return;
+    }
+    this.formatBigData2Mark(imgBase64Reg, 'cm-url base64');
+    this.formatBigData2Mark(imgDrawioXmlReg, 'cm-url drawio');
+  };
+
+  /**
+   * 把大字符串变成省略号
+   * @param {*} reg 正则
+   * @param {*} className 利用codemirror的MarkText生成的新元素的class
+   */
+  formatBigData2Mark = (reg, className) => {
+    const codemirror = this.editor;
+    const searcher = codemirror.getSearchCursor(reg);
+
+    let oneSearch = searcher.findNext();
+    for (; oneSearch !== false; oneSearch = searcher.findNext()) {
+      const target = searcher.from();
+      if (!target) {
+        continue;
+      }
+      const bigString = oneSearch[2] ?? '';
+      const targetChFrom = target.ch + oneSearch[1]?.length;
+      const targetChTo = targetChFrom + bigString.length;
+      const targetLine = target.line;
+      const begin = { line: targetLine, ch: targetChFrom };
+      const end = { line: targetLine, ch: targetChTo };
+      // 如果所在区域已经有mark了，则不再增加mark
+      if (codemirror.findMarks(begin, end).length > 0) {
+        continue;
+      }
+      const newSpan = createElement('span', `cm-string ${className}`, { title: bigString });
+      newSpan.textContent = bigString;
+      this.noChange = true;
+      codemirror.markText(begin, end, { replacedWith: newSpan, atomic: true });
+    }
+  };
+
+  /**
+   *
+   * @param {KeyboardEvent} e
+   * @param {CodeMirror.Editor} codemirror
+   */
+  onKeyup = (e, codemirror) => {
+    const { line: targetLine } = codemirror.getCursor();
+    this.previewer.highlightLine(targetLine + 1);
+  };
 
   /**
    *
@@ -134,11 +207,17 @@ export default class Editor {
     // 复制html转换markdown
     const htmlText = clipboardData.getData('text/plain');
     let html = clipboardData.getData('Text/Html');
-    if (!html) {
+    if (!html || !this.options.convertWhenPaste) {
       return true;
     }
+    /**
+     * 这里需要处理一个特殊逻辑：
+     *    从excel中复制而来的内容，剪切板里会有一张图片（一个<img>元素）和一段纯文本，在这种场景下，需要丢掉图片，直接粘贴纯文本
+     * 与此同时，当剪切板里有图片和其他html标签时（从web页面上复制的内容），则需要走下面的html转md的逻辑
+     * 基于上述两个场景，才有了下面四行奇葩的代码
+     */
     const test = html.replace(/<(html|head|body|!)/g, '');
-    if (test.match(/<[a-zA-Z]/g).length <= 1 && /<img/.test(test)) {
+    if (test.match(/<[a-zA-Z]/g)?.length <= 1 && /<img/.test(test)) {
       return true;
     }
     let divObj = document.createElement('DIV');
@@ -152,7 +231,7 @@ export default class Editor {
         currentCursor.line = range[0].anchor.line;
         currentCursor.ch = range[0].anchor.ch;
         codemirrorDoc.replaceSelection(mdText);
-        pasteHelper.showSwitchBtnAfterPasteHtml(currentCursor, codemirror, htmlText, mdText);
+        pasteHelper.showSwitchBtnAfterPasteHtml(this.$cherry, currentCursor, codemirror, htmlText, mdText);
       } else {
         codemirrorDoc.replaceSelection(mdText);
       }
@@ -166,6 +245,7 @@ export default class Editor {
    * @param {CodeMirror.Editor} codemirror
    */
   onScroll = (codemirror) => {
+    Event.emit(this.instanceId, Event.Events.cleanAllSubMenus); // 滚动时清除所有子菜单，这不应该在Bubble中处理，我们关注的是编辑器的滚动  add by ufec
     if (this.disableScrollListener) {
       this.disableScrollListener = false;
       return;
@@ -188,6 +268,18 @@ export default class Editor {
     // console.log(percent);
     // codemirror中行号以0开始，所以需要+1
     this.previewer.scrollToLineNum(targetLine + 1, percent);
+  };
+
+  /**
+   *
+   * @param {CodeMirror.Editor} codemirror
+   * @param {MouseEvent} evt
+   */
+  onMouseDown = (codemirror, evt) => {
+    Event.emit(this.instanceId, Event.Events.cleanAllSubMenus); // Bubble中处理需要考虑太多，直接在编辑器中处理可包括Bubble中所有情况，因为产生Bubble的前提是光标在编辑器中 add by ufec
+    const { line: targetLine } = codemirror.getCursor();
+    const top = Math.abs(evt.y - codemirror.getWrapperElement().getBoundingClientRect().y);
+    this.previewer.scrollToLineNumWithOffset(targetLine + 1, top);
   };
 
   /**
@@ -239,25 +331,89 @@ export default class Editor {
 
     editor.on('change', (codemirror, evt) => {
       this.options.onChange(evt, codemirror);
+      this.dealBigData();
     });
 
     editor.on('keydown', (codemirror, evt) => {
       this.options.onKeydown(evt, codemirror);
     });
 
+    editor.on('keyup', (codemirror, evt) => {
+      this.onKeyup(evt, codemirror);
+    });
+
     editor.on('paste', (codemirror, evt) => {
       this.options.onPaste.call(this, evt, codemirror);
+    });
+
+    if (this.options.autoScrollByCursor) {
+      editor.on('mousedown', (codemirror, evt) => {
+        setTimeout(() => {
+          this.onMouseDown(codemirror, evt);
+        });
+      });
+    }
+
+    editor.on('drop', (codemirror, evt) => {
+      const files = evt.dataTransfer.files || [];
+      if (files && files.length > 0) {
+        // 增加延时，让drop的位置变成codemirror的光标位置
+        setTimeout(() => {
+          for (let i = 0, needBr = false; i < files.length; i++) {
+            const file = files[i];
+            const fileType = file.type || '';
+            // 文本类型或者无类型的，直接读取内容，不做上传文件的操作
+            if (fileType === '' || /^text/i.test(fileType)) {
+              continue;
+            }
+            this.options.fileUpload(file, (url, params = {}) => {
+              if (typeof url !== 'string') {
+                return;
+              }
+              // 拖拽上传文件时，强制改成没有文字选择区的状态
+              codemirror.setSelection(codemirror.getCursor());
+              const name = params.name ? params.name : file.name;
+              let type = '';
+              let poster = '';
+              if (/video/i.test(file.type)) {
+                type = '!video';
+                poster = params.poster ? `{poster=${params.poster}}` : '';
+              }
+              if (/audio/i.test(file.type)) {
+                type = '!audio';
+              }
+              if (/image/i.test(file.type)) {
+                type = '!';
+              }
+              const style = type ? handelParams(params) : '';
+              type = needBr ? `\n${type}` : type;
+              const insertValue = `${type}[${name}${style}](${url})${poster}`;
+              // 当批量上传文件时，每个被插入的文件中间需要加个换行，但单个上传文件的时候不需要加换行
+              needBr = true;
+              codemirror.replaceSelection(insertValue);
+            });
+          }
+        }, 50);
+      }
     });
 
     editor.on('scroll', (codemirror) => {
       this.options.onScroll(codemirror);
     });
 
-    if (previewer.options.isPreviewOnly) {
-      previewer.options.afterUpdateCallBack.push(() => {
-        lazyLoadImg(previewer.options.previewerDom);
-      });
-    }
+    addEvent(
+      this.getEditorDom(),
+      'wheel',
+      () => {
+        // 鼠标滚轮滚动时，强制监听滚动事件
+        this.disableScrollListener = false;
+        // 打断滚动动画
+        cancelAnimationFrame(this.animation.timer);
+        this.animation.timer = 0;
+      },
+      false,
+    );
+
     /**
      * @property
      * @type {CodeMirror.Editor}
@@ -339,9 +495,6 @@ export default class Editor {
     const $lineNum = Math.max(0, lineNum);
     this.jumpToLine($lineNum, endLine, percent);
     Logger.log('滚动预览区域，左侧应scroll to ', $lineNum);
-    if (this.previewer.options.isPreviewOnly) {
-      lazyLoadImg(this.previewer.options.previewerDom);
-    }
   }
 
   /**

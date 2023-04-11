@@ -20,5 +20,5 @@ yarn-error.log*
 *.sln
 *.sw?
 
-# dist types
-dist/**/*.d.ts
+# Lock files
+package-lock.json

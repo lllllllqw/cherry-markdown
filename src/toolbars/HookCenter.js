@@ -26,9 +26,11 @@ import Color from './hooks/Color';
 import Header from './hooks/Header';
 import Insert from './hooks/Insert';
 import List from './hooks/List';
+import Ol from './hooks/Ol';
+import Ul from './hooks/Ul';
+import CheckList from './hooks/CheckList';
 import Graph from './hooks/Graph';
 import Size from './hooks/Size';
-import CheckList from './hooks/CheckList';
 import H1 from './hooks/H1';
 import H2 from './hooks/H2';
 import H3 from './hooks/H3';
@@ -44,9 +46,28 @@ import Export from './hooks/Export';
 import Settings from './hooks/Settings';
 import Underline from './hooks/Underline';
 import SwitchModel from './hooks/SwitchModel';
+import Image from './hooks/Image';
+import Audio from './hooks/Audio';
+import Video from './hooks/Video';
+import Br from './hooks/Br';
+import Hr from './hooks/Hr';
+import Formula from './hooks/Formula';
+import Link from './hooks/Link';
+import Table from './hooks/Table';
+import Toc from './hooks/Toc';
+import LineTable from './hooks/LineTable';
+import BarTable from './hooks/BarTable';
+import Pdf from './hooks/Pdf';
+import File from './hooks/File';
+import Word from './hooks/Word';
+import Ruby from './hooks/Ruby';
+import Theme from './hooks/Theme';
 // Sidebar
 import MobilePreview from './hooks/MobilePreview';
 import Copy from './hooks/Copy';
+import Panel from './hooks/Panel';
+import Detail from './hooks/Detail';
+import DrawIo from './hooks/DrawIo';
 
 // 定义默认支持的工具栏
 // 目前不支持按需动态加载
@@ -61,9 +82,11 @@ const HookList = {
   header: Header,
   insert: Insert,
   list: List,
+  ol: Ol,
+  ul: Ul,
+  checklist: CheckList,
   graph: Graph,
   size: Size,
-  checklist: CheckList,
   h1: H1,
   h2: H2,
   h3: H3,
@@ -82,45 +105,87 @@ const HookList = {
   redo: Redo,
   underline: Underline,
   switchModel: SwitchModel,
+  image: Image,
+  audio: Audio,
+  video: Video,
+  br: Br,
+  hr: Hr,
+  formula: Formula,
+  link: Link,
+  table: Table,
+  toc: Toc,
+  lineTable: LineTable,
+  barTable: BarTable,
+  pdf: Pdf,
+  word: Word,
+  ruby: Ruby,
+  theme: Theme,
+  file: File,
+  panel: Panel,
+  detail: Detail,
+  drawIo: DrawIo,
 };
 
 export default class HookCenter {
   constructor(toolbar) {
-    return this.init(toolbar);
+    this.toolbar = toolbar;
+    /**
+     * @type {{[key: string]: import('@/toolbars/MenuBase').default}} 保存所有菜单实例
+     */
+    this.hooks = {};
+    /**
+     * @type {string[]} 所有注册的菜单名称
+     */
+    this.allMenusName = [];
+    /**
+     * @type {string[]} 一级菜单的名称
+     */
+    this.level1MenusName = [];
+    /**
+     * @type {{ [parentName: string]: string[]}} 二级菜单的名称, e.g. {一级菜单名称: [二级菜单名称1, 二级菜单名称2]}
+     */
+    this.level2MenusName = {};
+    this.init();
+  }
+
+  $newMenu(name) {
+    if (this.hooks[name]) {
+      return;
+    }
+    const { $cherry, customMenu } = this.toolbar.options;
+    if (HookList[name]) {
+      this.allMenusName.push(name);
+      this.hooks[name] = new HookList[name]($cherry);
+    } else if (customMenu !== undefined && customMenu !== null && customMenu[name]) {
+      this.allMenusName.push(name);
+      // 如果是自定义菜单，传参兼容旧版
+      this.hooks[name] = new customMenu[name]($cherry);
+    }
   }
 
   /**
    * 根据配置动态渲染、绑定工具栏
-   * @param {any} toolbar 工具栏配置对象
    * @returns
    */
-  init(toolbar) {
-    const { buttonConfig, editor, customMenu, engine } = toolbar.options;
-    // TODO: 去除重复代码
-    return buttonConfig.reduce((hookList, item) => {
+  init() {
+    const { buttonConfig } = this.toolbar.options;
+    buttonConfig.forEach((item) => {
       if (typeof item === 'string') {
-        // 字符串
-        if (HookList[item]) {
-          hookList.push(new HookList[item](editor, engine, toolbar));
-        } else if (customMenu[item]) {
-          // TODO: 校验合法性，重名处理
-          hookList.push(new customMenu[item](editor, engine, toolbar));
-        }
+        this.level1MenusName.push(item);
+        this.$newMenu(item);
       } else if (typeof item === 'object') {
         const keys = Object.keys(item);
-        if (keys.length !== 1) {
-          return hookList;
-        }
-        // 只接受形如{ name: [ subMenu ] }的参数
-        const [name] = keys;
-        if (HookList[name]) {
-          hookList.push(new HookList[name](editor, item[name], engine, toolbar));
-        } else if (customMenu[name]) {
-          // TODO: 校验合法性，重名处理
-          hookList.push(new customMenu[name](editor, item[name], engine, toolbar));
+        if (keys.length === 1) {
+          // 只接受形如{ name: [ subMenu ] }的参数
+          const [name] = keys;
+          this.level1MenusName.push(name);
+          this.$newMenu(name);
+          this.level2MenusName[name] = item[name];
+          item[name].forEach((subItem) => {
+            this.$newMenu(subItem);
+          });
         }
       }
-      return hookList;
-    }, []);
+    });
   }
 }

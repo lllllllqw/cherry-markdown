@@ -18,8 +18,8 @@ import MenuBase from '@/toolbars/MenuBase';
  * 全屏按钮
  */
 export default class FullScreen extends MenuBase {
-  constructor(editor) {
-    super(editor);
+  constructor($cherry) {
+    super($cherry);
     this.updateMarkdown = false;
     this.setName('fullScreen', 'fullscreen');
   }
@@ -34,5 +34,6 @@ export default class FullScreen extends MenuBase {
     } else {
       cherryClass.add('fullscreen');
     }
+    this.editor.editor.refresh();
   }
 }

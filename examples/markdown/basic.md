@@ -9,9 +9,10 @@
 - [注入](xss.html){target=_blank}
 - [API](api.html){target=_blank}
 - [图片所见即所得编辑尺寸](img.html){target=_blank}
+- [表格所见即所得编辑尺寸](table.html){target=_blank}
 - [标题自动序号](head_num.html){target=_blank}
 
-# Cherry Markdown 简明手册
+# Cherry Markdown  { 简明手册 | jiǎn míng shǒu cè }
 
 [[toc]]
 
@@ -232,32 +233,45 @@
 标准图片  ![一条dog#100px](images/demo-dog.png)
 设置图片大小(相对大小&绝对大小)  ![一条dog#10%#50px](images/demo-dog.png)
 设置图片对齐方式：
-**左对齐**
-![一条dog#auto#100px#left](images/demo-dog.png)
-**居中**
-![一条dog#auto#100px#center](images/demo-dog.png)
-**右对齐**
-![一条dog#auto#100px#right](images/demo-dog.png)
-**浮动左对齐**
-![一条dog#auto#100px#float-left](images/demo-dog.png)
+**左对齐+边框**
+![一条dog#auto#100px#left#border](images/demo-dog.png)
+**居中+边框+阴影**
+![一条dog#auto#100px#center#B#shadow](images/demo-dog.png)
+**右对齐+边框+阴影+圆角**
+![一条dog#auto#100px#right#B#S#radius](images/demo-dog.png)
+**浮动左对齐+边框+阴影+圆角**
+![一条dog#auto#100px#float-left#B#S#R](images/demo-dog.png)
 开心也是一天，不开心也是一天
 这样就过了两天，汪
 ```
 
 **效果**
-标准图片 ![一条dog#100px](images/demo-dog.png)
-设置图片大小(相对大小&绝对大小) ![一条dog#10%#50px](images/demo-dog.png)
+标准图片  ![一条dog#100px](images/demo-dog.png)
+设置图片大小(相对大小&绝对大小)  ![一条dog#10%#50px](images/demo-dog.png)
 设置图片对齐方式：
-**左对齐**
-![一条dog#auto#100px#left](images/demo-dog.png)
-**居中**
-![一条dog#auto#100px#center](images/demo-dog.png)
-**右对齐**
-![一条dog#auto#100px#right](images/demo-dog.png)
-**浮动左对齐**
-![一条dog#auto#100px#float-left](images/demo-dog.png)
+**左对齐+边框**
+![一条dog#auto#100px#left#border](images/demo-dog.png)
+**居中+边框+阴影**
+![一条dog#auto#100px#center#B#shadow](images/demo-dog.png)
+**右对齐+边框+阴影+圆角**
+![一条dog#auto#100px#right#B#S#radius](images/demo-dog.png)
+**浮动左对齐+边框+阴影+圆角**
+![一条dog#auto#100px#float-left#B#S#R](images/demo-dog.png)
 开心也是一天，不开心也是一天
 这样就过了两天，汪
+
+
+> 属性释义：
+- 宽度：第一个 `#100px` 或 `#10%` 或 `#auto`
+- 高度：第二个 `#100px` 或 `#10%` 或 `#auto`
+- 左对齐：`#left`
+- 右对齐：`#right`
+- 居中对齐：`#center`
+- 悬浮左对齐：`#float-left`
+- 悬浮右对齐：`#float-right`
+- 边框：`#border` 或 `#B`
+- 阴影：`#shadow` 或 `#S`
+- 圆角：`#radius` 或 `#R`
 
 ---
 
@@ -270,6 +284,53 @@
 **说明**
 
 - 使用`[[toc]]`，会自动生成一个页面目录，目录内容由一级、二级、三级标题组成
+
+---
+
+## 信息面板
+
+**说明**
+使用连续三个冒号`:::`和关键字（`[primary | info | warning | danger | success]`）来声明
+```
+:::primary // [primary | info | warning | danger | success] 标题
+内容
+:::
+```
+
+**效果**
+:::p 标题
+内容
+:::
+:::success
+内容
+:::
+
+
+---
+
+## 手风琴
+
+**说明**
+使用连续三个加号`+++`和关键字（`[ + | - ]`）来声明，关键字`+`表示默认收起，关键字`-`表示默认展开
+```
++++ 点击展开更多
+内容
+++- 默认展开
+内容
+++ 默认收起
+内容
++++
+```
+
+**效果**
++++ 点击展开更多
+内容
+++- 默认展开
+内容
+++ 默认收起
+内容
++++
+
 
 ---
 
@@ -396,11 +457,13 @@ $$
 
 ```
 这是个演示视频  !video[不带封面演示视频](images/demo.mp4)
+这是个演示视频  !video[带封面演示视频](images/demo.mp4){poster=images/demo-dog.png}
 这是个假音频!audio[描述](视频链接地址)
 ```
 **效果**
 
 这是个演示视频  !video[不带封面演示视频](images/demo.mp4)
+这是个演示视频  !video[带封面演示视频](images/demo.mp4){poster=images/demo-dog.png}
 这是个假音频!audio[描述](视频链接地址)
 
 
